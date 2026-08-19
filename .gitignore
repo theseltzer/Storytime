@@ -14,16 +14,5 @@ cmd/game/game
 art/*.raw
 __pycache__/
 
-# Machine-local Claude Code permissions, not part of the project
-.claude/settings.local.json
-
 # Never commit connection strings
 .env
-
-# Personal working notes for Claude Code, the Go exercises written while
-# building this, and my own deploy/reference notes. None of it belongs in the
-# published repo.
-CLAUDE.md
-training/
-Deployment.md
-Sources.md
