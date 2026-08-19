@@ -1,4 +1,4 @@
-# Story_time
+# Story_time v1
 
 A CV you ride through.
 
@@ -14,7 +14,7 @@ The CV page is served in both languages: `/cv` (English) and `/cv/tr` (Turkish).
 <!-- TODO: live URL here once deployed -->
 <!-- TODO: screenshot of the world here -->
 
-## The idea worth explaining
+## The idea
 
 One content store, two renderers.
 
@@ -42,38 +42,6 @@ closes a page that takes too long to load. So the game is not allowed to be the
 only way in. Both views read the same rows, which is what makes the database
 earn its place instead of being decoration: editing a row changes the game and
 the CV page at once, with no rebuild.
-
-## Decisions I would defend in an interview
-
-**Movement: direction vectors, not click-to-move.** The first version let you
-click a spot and the avatar rode there. Then walls entered the design, and
-"ride there" suddenly meant A\* pathfinding — a large chunk of work to build and
-tune. Switching to direct control (WASD/arrows, or an invisible on-screen
-joystick on touch) made collision about fifteen lines: test the four corners of
-the box, test each axis separately, and wall-sliding falls out for free. I
-removed an entire algorithm by changing a requirement instead of implementing it.
-
-**The joystick has a dead zone.** A thumb resting on a phone screen moves one or
-two pixels. Without a dead zone the avatar twitches while you are not touching
-anything, which reads as a bug even though every line is correct.
-
-**The map is fetched, not compiled in.** `web/map.txt` is one character per
-tile. It arrives over HTTP like any other data, so changing the world is editing
-a text file and refreshing — no rebuild. Collision reads the same characters, so
-the picture and the physics can never disagree.
-
-**A goroutine cannot return an error.** Three things load over the network:
-spots, map, art. Each can fail three ways — the request, a non-200, a decode
-error — and none of it may block the game loop. Each fetch runs in a goroutine
-and sends one value that carries either the data or the reason there is none, so
-the update loop stays the only writer of game state and there is no shared
-memory to race over.
-
-**Two languages are a closed set.** Instead of a `lang` column and a query per
-language, each row carries both. The API ships both, so switching language is a
-re-render with no refetch, and `/cv` and `/cv/tr` are two URLs rather than
-content negotiation — a crawler indexes a URL, not a header, and a link you send
-someone has to open the same page for them as it did for you.
 
 ## Stack
 
