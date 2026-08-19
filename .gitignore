@@ -20,7 +20,10 @@ __pycache__/
 # Never commit connection strings
 .env
 
-# Personal working notes for Claude Code, and the Go exercises written while
-# building this. Neither belongs in the published repo.
+# Personal working notes for Claude Code, the Go exercises written while
+# building this, and my own deploy/reference notes. None of it belongs in the
+# published repo.
 CLAUDE.md
 training/
+Deployment.md
+Sources.md
