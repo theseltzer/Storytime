@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Story_time</title>
+<style>
+  /* overflow:hidden matters: a scrollbar would shrink the canvas, which
+     shrinks the reported size, which can oscillate frame to frame. */
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1b1b1b; }
+  canvas { display: block; }
+  body { display: flex; align-items: center; justify-content: center; }
+  #status { color: #ddd; font: 16px system-ui, sans-serif; }
+
+  /* Oyunun veri durumu: yükleniyor / hata. Hazır olunca gizlenir. */
+  #game-status {
+    position: fixed;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 8px 16px;
+    border-radius: 999px;
+    background-color: rgba(0, 0, 0, 0.75);
+    color: #eee;
+    font: 14px system-ui, -apple-system, sans-serif;
+    z-index: 20;
+    display: none; /* Go açana kadar görünmez */
+  }
+
+  /* Hata hali: aynı kutu, farklı renk. Ayrı bir element değil, çünkü ikisi
+     asla aynı anda görünmez. */
+  #game-status.error {
+    background-color: rgba(140, 30, 30, 0.9);
+    color: #fff;
+  }
+
+  /* Canvas üzerinde duracak hikaye paneli */
+  #story-panel {
+    position: fixed;
+    top: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80%;
+    max-width: 480px;
+    padding: 20px;
+    background-color: #ffffff;
+    color: #1a1a1a;
+    border-radius: 8px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    z-index: 10;
+    display: none; /* Varsayılan olarak gizli */
+    font-family: system-ui, -apple-system, sans-serif;
+  }
+
+  #story-title {
+    margin-top: 0;
+    margin-bottom: 10px;
+    font-size: 1.25rem;
+    color: #111;
+  }
+
+  #story-body {
+    margin: 0;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    color: #444;
+  }
+
+  #story-close {
+    margin-top: 16px;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    background-color: #3a6b35; /* same green as the map */
+    color: #fff;
+    font: inherit;
+    cursor: pointer; /* without this the mouse stays an I-beam over a button */
+  }
+
+  #story-close:hover { background-color: #2d5429; }
+
+  /* Dil düğmesi. Panelden yüksek z-index: panel açıkken de erişilebilir
+     kalmalı, çünkü asıl işe yaradığı an "bunu okuyamıyorum" anıdır. */
+  #lang-toggle {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 30;
+    min-width: 44px;   /* dokunmatik hedef: 44px altı parmakla ıskalanır */
+    padding: 8px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 999px;
+    background-color: rgba(0, 0, 0, 0.6);
+    color: #eee;
+    font: 600 13px system-ui, -apple-system, sans-serif;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+  }
+
+  #lang-toggle:hover { background-color: rgba(0, 0, 0, 0.85); }
+</style>
+</head>
+<body>
+  <p id="status">loading…</p>
+
+  <!-- Dil düğmesi. Etiketi GİDİLECEK dili gösterir, mevcut dili değil:
+       "TR" yazıyorsa tıklayınca Türkçe olur. -->
+  <button id="lang-toggle"></button>
+
+  <!-- Veri durumu göstergesi. #status'tan ayrı: o, wasm indirilirken
+       gösteriliyor ve modül yüklenince remove() ile siliniyor. -->
+  <div id="game-status"></div>
+
+  <!-- Hikaye Paneli -->
+  <div id="story-panel">
+    <h2 id="story-title"></h2>
+    <p id="story-body"></p>
+    <button id="story-close">Kapat</button>
+  </div>
+
+  <!-- Ships with Go, at $(go env GOROOT)/lib/wasm/wasm_exec.js.
+       It defines Go(), the shim that lets a Go program talk to the browser.
+       It must come from the same Go version that built game.wasm. -->
+  <script src="wasm_exec.js"></script>
+  <script>
+    // ---------------------------------------------------------------
+    // DİL. Tek doğruluk kaynağı burası: Go dili hiç bilmiyor, iki dili de
+    // gönderiyor ve seçimi bu dosya yapıyor. Böylece düğmeye basmak ne
+    // yeniden istek ne de Go tarafında bir tur gerektiriyor.
+    // ---------------------------------------------------------------
+    const UI = {
+      en: {
+        close: "Close",
+        loading: "Loading data…",
+        spots_failed: "Could not load the content.",
+        map_failed: "Could not load the map.",
+        toggleLabel: "TR",       // tıklayınca gidilecek dil
+        toggleTitle: "Türkçe'ye geç",
+      },
+      tr: {
+        close: "Kapat",
+        loading: "Veriler yükleniyor…",
+        spots_failed: "İçerik yüklenemedi.",
+        map_failed: "Harita yüklenemedi.",
+        toggleLabel: "EN",
+        toggleTitle: "Switch to English",
+      },
+    };
+
+    // Öncelik: kullanıcının kaydettiği seçim > tarayıcı dili > EN.
+    // Geo-IP yok: VPN ve diaspora onu yanlış yapar, tarayıcı dili ise
+    // kullanıcının kendi beyanıdır.
+    function resolveLang() {
+      try {
+        const saved = localStorage.getItem("lang");
+        if (saved === "en" || saved === "tr") return saved;
+      } catch (e) {
+        // Gizli sekmede localStorage okuması patlayabilir. Kayıtlı seçim
+        // yoksa tarayıcı dili zaten makul bir cevap; çökmesine gerek yok.
+      }
+      return (navigator.language || "en").toLowerCase().startsWith("tr") ? "tr" : "en";
+    }
+
+    let lang = resolveLang();
+
+    // O anda ekranda ne olduğunun hafızası. Dil değişince yeniden çizebilmek
+    // için lazım: DOM'daki metin çevrilmiş hâli, kaynağı değil.
+    let story = null;      // {titleEN, bodyEN, titleTR, bodyTR}
+    let statusKey = null;  // UI sözlüğündeki anahtar, ya da null
+    let statusIsError = false;
+
+    function render() {
+      const t = UI[lang];
+
+      document.documentElement.lang = lang;
+      document.getElementById("story-close").textContent = t.close;
+
+      const toggle = document.getElementById("lang-toggle");
+      toggle.textContent = t.toggleLabel;
+      toggle.title = t.toggleTitle;
+
+      const panel = document.getElementById("story-panel");
+      if (story) {
+        document.getElementById("story-title").textContent =
+          lang === "tr" ? story.titleTR : story.titleEN;
+        document.getElementById("story-body").textContent =
+          lang === "tr" ? story.bodyTR : story.bodyEN;
+        panel.style.display = "block";
+      } else {
+        panel.style.display = "none";
+      }
+
+      const el = document.getElementById("game-status");
+      if (statusKey) {
+        el.textContent = t[statusKey];
+        el.classList.toggle("error", statusIsError);
+        el.style.display = "block";
+      } else {
+        el.style.display = "none";
+      }
+    }
+
+    document.getElementById("lang-toggle").addEventListener("click", () => {
+      lang = lang === "tr" ? "en" : "tr";
+      try {
+        localStorage.setItem("lang", lang);
+      } catch (e) {
+        // Kaydedilemedi: seçim bu sekme için yine de geçerli, sadece
+        // kalıcı olmaz. Sessizce devam etmek doğru davranış.
+      }
+      render();
+    });
+
+    // --- Go'nun çağırdığı fonksiyonlar ---
+    // Hepsi durumu değiştirip render()'a bırakıyor. Tek çizim yolu olması,
+    // dil değişiminin her şeyi aynı anda tazelemesini garanti ediyor.
+
+    function showStory(titleEN, bodyEN, titleTR, bodyTR) {
+      story = { titleEN, bodyEN, titleTR, bodyTR };
+      render();
+    }
+
+    function hideStory() {
+      story = null;
+      render();
+    }
+
+    // Go metin değil ANAHTAR gönderiyor ("loading", "map_failed"). Cümlenin
+    // hangi dilde olacağı buranın bilgisi.
+    function showStatus(key) {
+      statusKey = key;
+      statusIsError = false;
+      render();
+    }
+
+    function showError(key) {
+      statusKey = key;
+      statusIsError = true;
+      render();
+    }
+
+    function hideStatus() {
+      statusKey = null;
+      render();
+    }
+
+    render(); // ilk boyama: düğme etiketi ve <html lang> daha wasm inmeden doğru olsun
+
+    // When the close button is clicked, each side cleans up its own half:
+    // JS hides the DOM element, Go clears activeSpot so the game accepts
+    // input again. closeStory does not exist yet at this point — Go creates
+    // it with js.Global().Set once the wasm module starts. That is fine:
+    // the name is only looked up when the click actually happens.
+    document.getElementById("story-close").addEventListener("click", () => {
+      hideStory();
+      closeStory();
+    });
+
+    const go = new Go();
+
+    // instantiateStreaming compiles the module while it downloads, so we don't
+    // wait for the whole file first. Ebiten creates its own <canvas> on run.
+    WebAssembly.instantiateStreaming(fetch("game.wasm"), go.importObject)
+      .then((result) => {
+        document.getElementById("status").remove();
+        go.run(result.instance);
+      })
+      .catch((err) => {
+        document.getElementById("status").textContent = "failed to load: " + err;
+        console.error(err);
+      });
+  </script>
+</body>
+</html>

@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="{{.Lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+{{if eq .Lang "tr"}}
+<title>Ahmet Faruk Şenormancı — Backend Geliştirici & Biyomühendis</title>
+<meta name="description" content="Biyomühendislikten backend geliştiriciliğine. Go, PostgreSQL, NGS/omik veri analizi. İstanbul.">
+{{else}}
+<title>Ahmet Faruk Şenormancı — Backend Developer & Bioengineer</title>
+<meta name="description" content="Bioengineer turned backend developer. Go, PostgreSQL, NGS and omics data analysis. Based in İstanbul.">
+{{end}}
+
+<!-- Tells search engines these two URLs are the same document in two
+     languages, so they index both instead of treating one as duplicate. -->
+<link rel="alternate" hreflang="en" href="/cv">
+<link rel="alternate" hreflang="tr" href="/cv/tr">
+
+<style>
+  :root {
+    --ink: #1a1a1a;
+    --muted: #5a5a5a;
+    --rule: #e2e2e2;
+    --accent: #3a6b35; /* the same green as the map */
+    --paper: #ffffff;
+  }
+
+  /* A CV is read by recruiters on phones and by ATS parsers that strip CSS
+     entirely, so the markup has to make sense with no styling at all. This
+     stylesheet only makes it pleasant, never structural. */
+  body {
+    margin: 0 auto;
+    padding: 48px 24px 72px;
+    max-width: 720px;
+    background: var(--paper);
+    color: var(--ink);
+    font: 16px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+
+  header { border-bottom: 2px solid var(--accent); padding-bottom: 20px; }
+
+  h1 { margin: 0 0 4px; font-size: 1.9rem; letter-spacing: -0.02em; }
+
+  .tagline { margin: 0 0 14px; color: var(--muted); font-size: 1.05rem; }
+
+  .contact { margin: 0; font-size: 0.92rem; color: var(--muted); }
+  .contact a { color: var(--accent); text-decoration: none; }
+  .contact a:hover { text-decoration: underline; }
+  .contact span:not(:last-child)::after { content: " · "; color: var(--rule); }
+
+  section { padding: 22px 0; border-bottom: 1px solid var(--rule); }
+  section:last-of-type { border-bottom: none; }
+
+  h2 { margin: 0 0 8px; font-size: 1.15rem; color: var(--accent); }
+
+  section p { margin: 0; }
+
+  footer {
+    margin-top: 28px;
+    padding-top: 18px;
+    border-top: 1px solid var(--rule);
+    font-size: 0.9rem;
+    color: var(--muted);
+  }
+  footer a { color: var(--accent); }
+
+  /* Printing a CV to PDF is the single most likely thing a recruiter does
+     with this page, so make that output clean rather than accidental. */
+  @media print {
+    body { padding: 0; max-width: none; font-size: 11pt; }
+    footer, .lang-switch { display: none; }
+    section { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Ahmet Faruk Şenormancı</h1>
+  {{if eq .Lang "tr"}}
+  <p class="tagline">Backend Geliştirici · Biyomühendis</p>
+  {{else}}
+  <p class="tagline">Backend Developer · Bioengineer</p>
+  {{end}}
+  <p class="contact">
+    <span>İstanbul</span>
+    <span><a href="mailto:ahmetsenormanci@gmail.com">ahmetsenormanci@gmail.com</a></span>
+    <span><a href="https://github.com/theseltzer" rel="me">github.com/theseltzer</a></span>
+  </p>
+</header>
+
+<!-- One section per row in the spots table. Same data the game reads from
+     /api/spots — this page is the crawler-readable rendering of it. -->
+{{range .Spots}}
+<section>
+  {{if eq $.Lang "tr"}}
+  <h2>{{.TitleTR}}</h2>
+  <p>{{.BodyTR}}</p>
+  {{else}}
+  <h2>{{.TitleEN}}</h2>
+  <p>{{.BodyEN}}</p>
+  {{end}}
+</section>
+{{end}}
+
+<footer>
+  {{if eq .Lang "tr"}}
+  <p><a href="/">İnteraktif sürüm</a> — aynı içerik, sürülebilir bir harita üzerinde.</p>
+  <p class="lang-switch"><a href="/cv">English version</a></p>
+  {{else}}
+  <p><a href="/">Interactive version</a> — the same content, on a map you can ride around.</p>
+  <p class="lang-switch"><a href="/cv/tr">Türkçe sürüm</a></p>
+  {{end}}
+</footer>
+
+</body>
+</html>

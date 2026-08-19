@@ -1,0 +1,26 @@
+# Build output. build.sh regenerates both from source, and game.wasm is ~19 MB
+# per build - keeping it out means the repo does not grow by that much every
+# time the game is rebuilt.
+web/game.wasm
+web/wasm_exec.js
+
+# Compiled server binaries
+/server
+/storytime
+cmd/server/server
+cmd/game/game
+
+# Intermediate produced by art/build_sprites.py
+art/*.raw
+__pycache__/
+
+# Machine-local Claude Code permissions, not part of the project
+.claude/settings.local.json
+
+# Never commit connection strings
+.env
+
+# Personal working notes for Claude Code, and the Go exercises written while
+# building this. Neither belongs in the published repo.
+CLAUDE.md
+training/

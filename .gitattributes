@@ -1,0 +1,7 @@
+# The repo is edited from Windows but built and served on Linux, so everything
+# is stored with LF and checked out with LF. Without this a cloned build.sh
+# gets CRLF line endings and fails with "bad interpreter" on the server.
+* text=auto eol=lf
+
+*.png binary
+*.wasm binary
