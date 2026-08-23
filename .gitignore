@@ -16,3 +16,6 @@ __pycache__/
 
 # Never commit connection strings
 .env
+
+# Working notes, kept local
+Roadmap.md
