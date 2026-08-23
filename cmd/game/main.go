@@ -11,11 +11,9 @@ import (
 	// "unknown format".
 	_ "image/png"
 
-	"io"
 	"log"
 	"math"
 	"net/http"
-	"strings"
 	"syscall/js"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -61,14 +59,20 @@ const (
 	// avatar.
 	deadZone = 12.0
 
-	// One tile is 32px, so web/map.txt at 25x18 covers exactly 800x576.
-	tileSize = 32
+	// The street. groundY is the world Y the avatar's centre rides at; its feet
+	// land bikeSize/2 below that, which is where the road surface is drawn.
+	//
+	// groundDepth is how much road stays visible below the feet. The camera is
+	// anchored to it rather than to the top of the world, so a short browser
+	// window still shows the street instead of a screenful of sky.
+	groundY     = 400
+	groundDepth = 96
 
-	// The Kenney tileset is drawn at 16px, so every tile is blown up 2x on its
-	// way to the screen. Two constants rather than a bare 2, because 16 is a
-	// fact about the source art and 32 is a fact about the world.
-	srcTileSize = 16
-	tileScale   = tileSize / srcTileSize
+	// The street runs from 0 to worldWidth. A placeholder: the real length will
+	// come out of the spot positions once they are re-authored for a world that
+	// only has an X axis.
+	worldWidth = 3200
+	startX     = 120
 )
 
 // Facing directions, in the row order of the sprite sheet.
@@ -80,25 +84,15 @@ const (
 )
 
 var (
-	colorGrass    = color.RGBA{0x3a, 0x6b, 0x35, 0xff}
 	colorBike     = color.RGBA{0xe8, 0x9c, 0x2a, 0xff}
 	colorSpot     = color.RGBA{0x2d, 0x54, 0x29, 0xff} // Dark green when away
 	colorSpotNear = color.RGBA{0xf1, 0xc4, 0x0f, 0xff} // bright yellow when close
-	colorWall     = color.RGBA{0x4a, 0x4a, 0x4a, 0xff} // '#'
-	colorDoor     = color.RGBA{0x8a, 0x6a, 0x3a, 0xff} // '_'
-)
 
-// Where each map character's picture sits in web/tiles.png, counted in source
-// tiles of 16px. The whole Kenney sheet ships as-is rather than a trimmed one,
-// so a new tile type later is a line here and nothing else - no image to
-// rebuild, no coordinates to renumber.
-var tileSrc = map[byte][2]int{
-	'.': {1, 1},  // grass, outdoors
-	'S': {1, 1},  // the start tile is only a marker; it looks like grass
-	',': {9, 4},  // indoor floor, so a building is not a walled lawn
-	'#': {18, 2}, // red brick
-	'_': {1, 4},  // the doorway, a different paving from both sides of it
-}
+	// Two flat bands until the parallax layers land. Dusk blue and near-black
+	// asphalt, picked so the silhouette look of the next step already reads.
+	colorSky    = color.RGBA{0x2b, 0x3a, 0x55, 0xff}
+	colorGround = color.RGBA{0x1a, 0x1c, 0x22, 0xff}
+)
 
 // Game holds everything that changes over time. Ebiten calls Update and Draw
 // on this one value forever, so all game state lives here.
@@ -108,10 +102,8 @@ type Game struct {
 	activeSpot   int
 	spotsCh      chan fetchSonuc
 
-	// One row per line of web/map.txt, indexed tiles[y][x]. Nil until the
-	// fetch lands, which is safe: ranging over a nil slice runs zero times.
-	tiles  []string
-	mapCh  chan mapSonuc
+	// Set once the spots have landed, so the DOM loading indicator is taken
+	// down exactly once rather than sixty times a second.
 	loaded bool
 	failed bool
 
@@ -122,10 +114,6 @@ type Game struct {
 	sprites   *ebiten.Image
 	spritesCh chan imageSonuc
 
-	// The terrain is kept as one ready-to-draw image per map character rather
-	// than as the whole sheet: see the tileset case in Update for why.
-	tileImg   map[byte]*ebiten.Image
-	tilesetCh chan imageSonuc
 	facing    int
 	animTick  int
 	animFrame int
@@ -144,14 +132,6 @@ type Game struct {
 // single channel, so Update stays the only writer of g.spots.
 type fetchSonuc struct {
 	spots []spot.Spot
-	err   error
-}
-
-// mapSonuc is the same idea for the terrain. A separate type and a separate
-// channel because the two fetches are independent: either can land first, and
-// nothing may wait on the other.
-type mapSonuc struct {
-	tiles []string
 	err   error
 }
 
@@ -182,16 +162,6 @@ func (g *Game) Update() error {
 			g.spots = r.spots
 		}
 
-	case m := <-g.mapCh:
-		if m.err != nil {
-			log.Printf("fetch map: %v", m.err)
-			g.failed = true
-			js.Global().Call("showError", "map_failed")
-		} else {
-			g.tiles = m.tiles
-			g.placeBike()
-		}
-
 	case sp := <-g.spritesCh:
 		if sp.err != nil {
 			// Not fatal: Draw falls back to a plain rectangle, so the game is
@@ -201,44 +171,26 @@ func (g *Game) Update() error {
 			g.sprites = ebiten.NewImageFromImage(sp.img)
 		}
 
-	case t := <-g.tilesetCh:
-		if t.err != nil {
-			// Not fatal either: Draw falls back to flat colours.
-			log.Printf("fetch tileset: %v", t.err)
-		} else {
-			sheet := ebiten.NewImageFromImage(t.img)
-
-			// Every tile is cut once, here, rather than by calling SubImage
-			// inside Draw. Draw runs 60 times a second over roughly 500 visible
-			// tiles and SubImage allocates a new image on every call, so doing
-			// it there would be 30000 pointless allocations a second.
-			g.tileImg = make(map[byte]*ebiten.Image, len(tileSrc))
-			for ch, p := range tileSrc {
-				g.tileImg[ch] = sheet.SubImage(image.Rect(
-					p[0]*srcTileSize, p[1]*srcTileSize,
-					(p[0]+1)*srcTileSize, (p[1]+1)*srcTileSize,
-				)).(*ebiten.Image)
-			}
-		}
-
+	// Without this the select waits for a channel that has nothing left to
+	// send, and Update never returns. An empty default is what makes the whole
+	// block "take a result if one is ready, otherwise carry on".
 	default:
 	}
 
-	// Two independent loads share one indicator, so it can only come down once
-	// both have landed. The loaded flag is not a copy of what the DOM already
-	// knows - it is an edge trigger, so the bridge is crossed once instead of
-	// 60 times a second.
-	if !g.loaded && !g.failed && g.spots != nil && g.tiles != nil {
+	// The indicator can only come down once, so the flag is an edge trigger
+	// rather than a copy of what the DOM already knows: the bridge is crossed
+	// one time instead of sixty times a second.
+	if !g.loaded && !g.failed && g.spots != nil {
 		g.loaded = true
 		js.Global().Call("hideStatus")
 	}
 
-	// All input collapses into one direction vector, so the movement below
-	// never learns which device produced it. While the story panel is open the
-	// vector stays zero and the bike simply stops.
-	var dx, dy float64
+	// All input collapses into one number, so the movement below never learns
+	// which device produced it. While the story panel is open it stays zero and
+	// the bike simply stops.
+	var dx float64
 	if g.activeSpot == -1 {
-		dx, dy = g.input()
+		dx = g.input()
 	}
 
 	// B swaps the avatar. Nothing else about the mechanics changes - same
@@ -252,42 +204,36 @@ func (g *Game) Update() error {
 		speed = bikeSpeed
 	}
 
-	// The two axes are tested separately on purpose. Riding into a wall at an
-	// angle then keeps the component that is still free, so the avatar slides
-	// along the wall instead of stopping dead against it.
-	if nx := g.bikeX + dx*speed; g.fits(nx, g.bikeY) {
-		g.bikeX = nx
-	}
-	if ny := g.bikeY + dy*speed; g.fits(g.bikeX, ny) {
-		g.bikeY = ny
-	}
+	// One axis, so there is nothing to test separately and nothing to slide
+	// along: the street has no walls. Clamped to the ends of the street, which
+	// is the only limit left now that the tile map is gone.
+	g.bikeX = min(max(g.bikeX+dx*speed, 0), worldWidth)
 
-	// Four-direction art from a free-angle vector: whichever axis is larger
-	// decides which way the avatar is turned.
-	if dx != 0 || dy != 0 {
-		if math.Abs(dx) > math.Abs(dy) {
-			g.facing = faceLeft
-			if dx > 0 {
-				g.facing = faceRight
-			}
-		} else {
-			g.facing = faceUp
-			if dy > 0 {
-				g.facing = faceDown
-			}
+	// Y is no longer an input, it is a result. The avatar is on the ground
+	// every frame because there is no jump to lift it off.
+	g.bikeY = groundAt(g.bikeX)
+
+	// Two directions instead of four: a side-scroller only ever faces the way
+	// it is walking.
+	if dx != 0 {
+		g.facing = faceLeft
+		if dx > 0 {
+			g.facing = faceRight
 		}
 
 		g.animTick++
 		g.animFrame = (g.animTick / animTicksPerFrame) % 4
 	} else {
 		// Standing still shows frame 0 but keeps the last facing, otherwise the
-		// avatar would snap to face south every time it stopped.
+		// avatar would snap back to one direction every time it stopped.
 		g.animFrame = 0
 	}
-	// Proximity check for each spot
+
+	// Proximity along the street only. Both the avatar and the spots sit on the
+	// same ground line, so the Y term of a distance would always be zero - and
+	// the spot Y values still hold top-down coordinates that mean nothing here.
 	for i := range g.spots {
-		dist := math.Hypot(g.bikeX-g.spots[i].X, g.bikeY-g.spots[i].Y)
-		g.spots[i].IsNear = dist <= g.spots[i].Radius
+		g.spots[i].IsNear = math.Abs(g.bikeX-g.spots[i].X) <= g.spots[i].Radius
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) && g.activeSpot == -1 {
@@ -312,54 +258,41 @@ func (g *Game) Update() error {
 
 }
 
-// placeBike moves the bike onto the tile marked S in the map. Keeping the start
-// position in the map file instead of in Go means moving it is a text edit
-// rather than a rebuild, the same rule the rest of the content follows.
-func (g *Game) placeBike() {
-	for y, row := range g.tiles {
-		if x := strings.IndexByte(row, 'S'); x >= 0 {
-			g.bikeX = float64(x*tileSize + tileSize/2)
-			g.bikeY = float64(y*tileSize + tileSize/2)
-			return
-		}
-	}
-
-	log.Print("map has no S tile; bike stays at 0,0")
+// groundAt is the world Y the avatar rides at for a given position along the
+// street. Constant today; it exists as a function so a sloped or stepped street
+// later is a change here and nowhere else.
+func groundAt(x float64) float64 {
+	return groundY
 }
 
-// camera returns the world coordinate that is drawn at the top-left of the
-// screen. The bike is centred, then the view is clamped so it never slides past
-// the edge of the map and shows blank space.
+// camera returns the world coordinate drawn at the top-left of the screen.
+//
+// X behaves as before: the avatar is centred, then clamped so the view never
+// slides past either end of the street.
+//
+// Y no longer follows anything. It is derived from the ground line so the road
+// always sits groundDepth pixels above the bottom edge, whatever height the
+// browser window happens to be. A tall window shows more sky, not more road.
 func (g *Game) camera() (float64, float64) {
-	if len(g.tiles) == 0 {
-		return 0, 0
-	}
-
-	worldW := float64(len(g.tiles[0]) * tileSize)
-	worldH := float64(len(g.tiles) * tileSize)
 	viewW, viewH := g.view()
 
-	// The outer max guards a view larger than the world, where the two clamp
+	// The outer max guards a view wider than the street, where the two clamp
 	// bounds would otherwise cross over.
-	return min(max(g.bikeX-viewW/2, 0), max(worldW-viewW, 0)),
-		min(max(g.bikeY-viewH/2, 0), max(worldH-viewH, 0))
+	camX := min(max(g.bikeX-viewW/2, 0), max(worldWidth-viewW, 0))
+	camY := groundY + bikeSize/2 + groundDepth - viewH
+
+	return camX, camY
 }
 
-// input returns this frame's direction, as a vector of length 0 or 1.
-// Keyboard wins when both are live; AppendTouchIDs is always empty on desktop,
-// so the touch half costs nothing there.
-func (g *Game) input() (float64, float64) {
-	var dx, dy float64
+// input returns this frame's direction: -1, 0 or 1. Keyboard wins when both are
+// live; AppendTouchIDs is always empty on desktop, so the touch half costs
+// nothing there.
+func (g *Game) input() float64 {
+	var dx float64
 
 	// IsKeyPressed, not IsKeyJustPressed: this asks "is the key down right
 	// now", which is what holding a direction means. Adding instead of
-	// choosing makes W+S cancel to zero on its own.
-	if ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyArrowUp) {
-		dy--
-	}
-	if ebiten.IsKeyPressed(ebiten.KeyS) || ebiten.IsKeyPressed(ebiten.KeyArrowDown) {
-		dy++
-	}
+	// choosing makes A+D cancel to zero on its own.
 	if ebiten.IsKeyPressed(ebiten.KeyA) || ebiten.IsKeyPressed(ebiten.KeyArrowLeft) {
 		dx--
 	}
@@ -367,11 +300,18 @@ func (g *Game) input() (float64, float64) {
 		dx++
 	}
 
-	if dx == 0 && dy == 0 {
-		dx, dy = g.joystick()
+	if dx == 0 {
+		// The stick reports how far the thumb has travelled, in pixels. Only its
+		// sign matters here - feeding the raw distance in would make speed
+		// depend on how far the thumb happened to slide.
+		if tx, _ := g.joystick(); tx < 0 {
+			dx = -1
+		} else if tx > 0 {
+			dx = 1
+		}
 	}
 
-	return normalize(dx, dy)
+	return dx
 }
 
 // joystick reads the invisible on-screen stick: the first finger to land sets
@@ -414,107 +354,25 @@ func (g *Game) joystick() (float64, float64) {
 	return dx, dy
 }
 
-// fits reports whether the whole bike, not just its centre, can stand at this
-// position. Checking the four corners of its box is enough: a tile is 32px and
-// the bike is 24px, so no wall can fit between the corners unnoticed.
-func (g *Game) fits(x, y float64) bool {
-	const half = bikeSize / 2
-
-	return !g.blocked(x-half, y-half) &&
-		!g.blocked(x+half, y-half) &&
-		!g.blocked(x-half, y+half) &&
-		!g.blocked(x+half, y+half)
-}
-
-// blocked turns a pixel position into a tile and says whether it is wall.
-// Anything off the map counts as wall, which is also what freezes the bike
-// until the map arrives: with no tiles there is nowhere legal to ride.
-func (g *Game) blocked(x, y float64) bool {
-	if x < 0 || y < 0 {
-		// Go truncates towards zero, so -1/32 would be tile 0 rather than -1.
-		// Catching negatives here keeps that from wrapping onto the map.
-		return true
-	}
-
-	tx, ty := int(x)/tileSize, int(y)/tileSize
-	if ty >= len(g.tiles) || tx >= len(g.tiles[ty]) {
-		return true
-	}
-
-	return g.tiles[ty][tx] == '#'
-}
-
-// normalize scales a vector to length 1 and leaves a zero vector alone.
-// Without it the diagonal (1,1) would be 1.41 long, making diagonal riding
-// 41% faster than riding straight.
-func normalize(dx, dy float64) (float64, float64) {
-	if dx == 0 && dy == 0 {
-		// Dividing by a zero length would give NaN, and a NaN coordinate never
-		// becomes a number again.
-		return 0, 0
-	}
-
-	l := math.Hypot(dx, dy)
-	return dx / l, dy / l
-}
-
 // Draw paints the current state. It must not change anything.
 func (g *Game) Draw(screen *ebiten.Image) {
-	screen.Fill(colorGrass)
+	screen.Fill(colorSky)
 
 	// Everything below is drawn at world coordinate minus camera, which is what
-	// turns a 2400x1728 world into an 800x576 window onto it.
+	// turns a 3200px street into a window onto part of it.
 	camX, camY := g.camera()
-
-	// Terrain first, so the spots and the bike land on top of it. Only the
-	// tiles the camera can see are drawn: the world holds 4050 of them and
-	// painting the off-screen ones is work nobody can look at. Floor tiles are
-	// skipped too, because the Fill above already painted that colour.
 	viewW, viewH := g.view()
-	y0, y1 := int(camY)/tileSize, int(camY+viewH)/tileSize
-	x0, x1 := int(camX)/tileSize, int(camX+viewW)/tileSize
 
-	// One options value reused for every tile, for the same reason as above: a
-	// fresh one inside the loop would be another 500 allocations per frame.
-	op := &ebiten.DrawImageOptions{}
+	// The road: one band from the ground line down past the bottom edge. It
+	// spans the screen rather than the world, because a flat colour has no
+	// features to slide - drawing it in world coordinates would cost a
+	// translation nobody could see.
+	roadTop := float32(groundY + bikeSize/2 - camY)
+	vector.DrawFilledRect(screen, 0, roadTop, float32(viewW), float32(viewH), colorGround, false)
 
-	for y := max(y0, 0); y <= min(y1, len(g.tiles)-1); y++ {
-		row := g.tiles[y]
-		for x := max(x0, 0); x <= min(x1, len(row)-1); x++ {
-			tx := float64(x*tileSize) - camX
-			ty := float64(y*tileSize) - camY
-
-			if g.tileImg != nil {
-				img, ok := g.tileImg[row[x]]
-				if !ok {
-					continue
-				}
-
-				// Reset first: GeoM accumulates, so without it every tile would
-				// inherit the previous tile's translation.
-				op.GeoM.Reset()
-				op.GeoM.Scale(tileScale, tileScale)
-				op.GeoM.Translate(tx, ty)
-				screen.DrawImage(img, op)
-				continue
-			}
-
-			// Fallback until the tileset lands, or if it never does. Floor is
-			// skipped here because the Fill above already painted that colour.
-			var c color.RGBA
-			switch row[x] {
-			case '#':
-				c = colorWall
-			case '_':
-				c = colorDoor
-			default:
-				continue
-			}
-
-			vector.DrawFilledRect(screen, float32(tx), float32(ty), tileSize, tileSize, c, false)
-		}
-	}
-
+	// Placeholder markers until the buildings arrive. They are pinned to the
+	// ground line, not to their stored Y: those Y values were authored for a
+	// top-down world and mean nothing on a street.
 	for _, s := range g.spots {
 		drawColor := colorSpot
 		if s.IsNear {
@@ -523,16 +381,13 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 		vector.DrawFilledCircle(
 			screen,
-			float32(s.X-camX), float32(s.Y-camY),
+			float32(s.X-camX), float32(groundY-camY),
 			float32(s.Radius),
 			drawColor,
 			true,
 		)
 	}
 
-	// The sprite is 32px while the collision box is 24px, which is deliberate:
-	// a shoulder overlapping a wall looks fine, a body stopped short of one
-	// does not.
 	if g.sprites != nil {
 		row := g.facing
 		if g.onBike {
@@ -599,15 +454,15 @@ func (g *Game) view() (float64, float64) {
 func main() {
 
 	g := &Game{
-		// No start position here: the map's S tile decides it, and the map has
-		// not arrived yet. Until it does, blocked() reports wall everywhere and
-		// the bike cannot move off 0,0 anyway.
+		// The start position is a constant now. It used to be the map's S tile,
+		// but there is no map to read it out of - and on a street there is only
+		// one interesting question about where to begin: how far along.
+		bikeX:      startX,
+		bikeY:      groundAt(startX),
 		activeSpot: -1,
 		onBike:     true, // the concept is riding a bike through the CV
 		spotsCh:    make(chan fetchSonuc, 1),
-		mapCh:      make(chan mapSonuc, 1),
 		spritesCh:  make(chan imageSonuc, 1),
-		tilesetCh:  make(chan imageSonuc, 1),
 	}
 
 	js.Global().Set("closeStory", js.FuncOf(func(this js.Value, args []js.Value) any {
@@ -653,40 +508,9 @@ func main() {
 		g.spotsCh <- fetchSonuc{spots: spots}
 	}()
 
-	// The terrain is a second, independent request. Same three failure modes,
-	// same shape - only the decoding differs, because map.txt is plain text
-	// rather than JSON.
-	go func() {
-		resp, err := http.Get("/map.txt")
-		if err != nil {
-			g.mapCh <- mapSonuc{err: fmt.Errorf("istek: %w", err)}
-			return
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			g.mapCh <- mapSonuc{err: fmt.Errorf("beklenmeyen status: %d", resp.StatusCode)}
-			return
-		}
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			g.mapCh <- mapSonuc{err: fmt.Errorf("okuma: %w", err)}
-			return
-		}
-
-		// Strip \r first in case the file was saved from Windows, then trim the
-		// trailing newline - splitting on it would leave an empty last row that
-		// tiles[y][x] would panic on.
-		text := strings.ReplaceAll(string(body), "\r", "")
-		g.mapCh <- mapSonuc{tiles: strings.Split(strings.TrimSpace(text), "\n")}
-	}()
-
-	// Third and fourth fetches: the art. Same shape as the two above, except
-	// the payload is decoded with image.Decode instead of a JSON or text parse.
-	// Both PNGs are the same job, so it is one function called twice.
+	// The art is a second, independent request. Same shape as the one above,
+	// except the payload is decoded with image.Decode instead of a JSON parse.
 	go fetchImage("/sprites.png", g.spritesCh)
-	go fetchImage("/tiles.png", g.tilesetCh)
 
 	if err := ebiten.RunGame(g); err != nil {
 		log.Fatal(err)
