@@ -94,6 +94,22 @@ var (
 	colorGround = color.RGBA{0x1a, 0x1c, 0x22, 0xff}
 )
 
+// bar is one building silhouette: where it starts along the street, how wide,
+// how tall. Its base always sits on the road, so no Y is needed.
+type bar struct {
+	x float64
+	w float64
+	h float64
+}
+
+// layer is one depth band of the skyline. factor is how fast it scrolls
+// relative to the camera: 1 is street level, smaller is farther away.
+type layer struct {
+	factor float64
+	clr    color.RGBA
+	bars   []bar
+}
+
 // Game holds everything that changes over time. Ebiten calls Update and Draw
 // on this one value forever, so all game state lives here.
 type Game struct {
@@ -113,6 +129,7 @@ type Game struct {
 
 	sprites   *ebiten.Image
 	spritesCh chan imageSonuc
+	layers    []layer
 
 	facing    int
 	animTick  int
@@ -368,6 +385,15 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	// features to slide - drawing it in world coordinates would cost a
 	// translation nobody could see.
 	roadTop := float32(groundY + bikeSize/2 - camY)
+
+	for _, l := range g.layers {
+		for _, b := range l.bars {
+			screenX := b.x - camX*l.factor
+			topY := float32(roadTop) - float32(b.h)
+			vector.FillRect(screen, float32(screenX), float32(topY), float32(b.w), float32(b.h), l.clr, false)
+		}
+	}
+
 	vector.DrawFilledRect(screen, 0, roadTop, float32(viewW), float32(viewH), colorGround, false)
 
 	// Placeholder markers until the buildings arrive. They are pinned to the
@@ -463,6 +489,19 @@ func main() {
 		onBike:     true, // the concept is riding a bike through the CV
 		spotsCh:    make(chan fetchSonuc, 1),
 		spritesCh:  make(chan imageSonuc, 1),
+		layers: []layer{
+			{
+				factor: 0.35,
+				clr:    color.RGBA{0x22, 0x2e, 0x44, 0xff},
+				bars: []bar{
+					{x: 60, w: 140, h: 180},
+					{x: 260, w: 90, h: 120},
+					{x: 420, w: 180, h: 220},
+					{x: 700, w: 110, h: 150},
+					{x: 900, w: 160, h: 200},
+				},
+			},
+		},
 	}
 
 	js.Global().Set("closeStory", js.FuncOf(func(this js.Value, args []js.Value) any {
