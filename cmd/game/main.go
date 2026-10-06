@@ -19,6 +19,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
+	"github.com/theseltzer/storytime/internal/skyline"
 	"github.com/theseltzer/storytime/internal/spot"
 )
 
@@ -94,20 +95,12 @@ var (
 	colorGround = color.RGBA{0x1a, 0x1c, 0x22, 0xff}
 )
 
-// bar is one building silhouette: where it starts along the street, how wide,
-// how tall. Its base always sits on the road, so no Y is needed.
-type bar struct {
-	x float64
-	w float64
-	h float64
-}
-
 // layer is one depth band of the skyline. factor is how fast it scrolls
 // relative to the camera: 1 is street level, smaller is farther away.
 type layer struct {
 	factor float64
 	clr    color.RGBA
-	bars   []bar
+	bars   []skyline.Bar
 }
 
 // Game holds everything that changes over time. Ebiten calls Update and Draw
@@ -388,9 +381,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	for _, l := range g.layers {
 		for _, b := range l.bars {
-			screenX := b.x - camX*l.factor
-			topY := float32(roadTop) - float32(b.h)
-			vector.FillRect(screen, float32(screenX), float32(topY), float32(b.w), float32(b.h), l.clr, false)
+			screenX := b.X - camX*l.factor
+			topY := float32(roadTop) - float32(b.H)
+			vector.FillRect(screen, float32(screenX), float32(topY), float32(b.W), float32(b.H), l.clr, false)
 		}
 	}
 
@@ -492,60 +485,37 @@ func main() {
 		layers: []layer{
 			{
 				// Far: tallest and densest, so it peeks above the middle row like
-				// a distant city. It slides least, so it needs the least length.
+				// a distant city.
 				factor: 0.15,
 				clr:    color.RGBA{0x5a, 0x5f, 0x86, 0xff},
-				bars: []bar{
-					{x: 0, w: 160, h: 260},
-					{x: 170, w: 120, h: 300},
-					{x: 300, w: 200, h: 240},
-					{x: 520, w: 140, h: 320},
-					{x: 680, w: 180, h: 270},
-					{x: 880, w: 130, h: 300},
-					{x: 1030, w: 200, h: 250},
-					{x: 1250, w: 150, h: 310},
-					{x: 1420, w: 190, h: 260},
-					{x: 1630, w: 140, h: 290},
-					{x: 1790, w: 200, h: 250},
-					{x: 2010, w: 160, h: 300},
-				},
+				bars: skyline.Generate(1, skyline.Config{
+					Length: worldWidth,
+					MinW:   120, MaxW: 200,
+					MinH: 240, MaxH: 320,
+					MinGap: 10, MaxGap: 20,
+				}),
 			},
 			{
 				factor: 0.35,
 				clr:    color.RGBA{0x22, 0x2e, 0x44, 0xff},
-				bars: []bar{
-					{x: 60, w: 140, h: 180},
-					{x: 260, w: 90, h: 120},
-					{x: 420, w: 180, h: 220},
-					{x: 700, w: 110, h: 150},
-					{x: 900, w: 160, h: 200},
-					{x: 1120, w: 130, h: 170},
-					{x: 1320, w: 170, h: 210},
-					{x: 1560, w: 100, h: 130},
-					{x: 1720, w: 150, h: 190},
-					{x: 1950, w: 120, h: 160},
-					{x: 2150, w: 240, h: 220},
-				},
+				bars: skyline.Generate(2, skyline.Config{
+					Length: worldWidth,
+					MinW:   90, MaxW: 240,
+					MinH: 120, MaxH: 220,
+					MinGap: 60, MaxGap: 100,
+				}),
 			},
 			{
 				// Near: short and spaced out, so the rows behind show through
-				// the gaps. It slides most, so it has to reach furthest.
+				// the gaps.
 				factor: 0.60,
 				clr:    color.RGBA{0x0d, 0x10, 0x20, 0xff},
-				bars: []bar{
-					{x: 0, w: 120, h: 110},
-					{x: 220, w: 90, h: 70},
-					{x: 420, w: 160, h: 130},
-					{x: 700, w: 100, h: 90},
-					{x: 900, w: 140, h: 120},
-					{x: 1150, w: 80, h: 60},
-					{x: 1350, w: 170, h: 140},
-					{x: 1650, w: 110, h: 100},
-					{x: 1900, w: 150, h: 80},
-					{x: 2150, w: 120, h: 130},
-					{x: 2400, w: 160, h: 110},
-					{x: 2620, w: 120, h: 90},
-				},
+				bars: skyline.Generate(3, skyline.Config{
+					Length: worldWidth,
+					MinW:   80, MaxW: 170,
+					MinH: 60, MaxH: 140,
+					MinGap: 60, MaxGap: 140,
+				}),
 			},
 		},
 	}
