@@ -62,11 +62,11 @@ const (
 	// The street. groundY is the world Y the avatar's centre rides at; its feet
 	// land bikeSize/2 below that, which is where the road surface is drawn.
 	//
-	// groundDepth is how much road stays visible below the feet. The camera is
-	// anchored to it rather than to the top of the world, so a short browser
-	// window still shows the street instead of a screenful of sky.
-	groundY     = 400
-	groundDepth = 96
+	// horizon is where that road line sits on screen, as a fraction of the
+	// screen height counted from the top. Three quarters leaves the upper part
+	// for sky and buildings and the lower quarter for the water.
+	groundY = 400
+	horizon = 0.75
 
 	// The street runs from 0 to worldWidth. A placeholder: the real length will
 	// come out of the spot positions once they are re-authored for a world that
@@ -268,15 +268,15 @@ func groundAt(x float64) float64 {
 // slides past either end of the street.
 //
 // Y no longer follows anything. It is derived from the ground line so the road
-// always sits groundDepth pixels above the bottom edge, whatever height the
-// browser window happens to be. A tall window shows more sky, not more road.
+// always sits at the horizon fraction of the screen height, whatever height
+// the browser window happens to be.
 func (g *Game) camera() (float64, float64) {
 	viewW, viewH := g.view()
 
 	// The outer max guards a view wider than the street, where the two clamp
 	// bounds would otherwise cross over.
 	camX := min(max(g.bikeX-viewW/2, 0), max(worldWidth-viewW, 0))
-	camY := groundY + bikeSize/2 + groundDepth - viewH
+	camY := groundY + bikeSize/2 - viewH*horizon
 
 	return camX, camY
 }
