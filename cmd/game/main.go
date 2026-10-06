@@ -30,8 +30,7 @@ const (
 	screenHeight = 576
 
 	bikeSize  = 24
-	walkSpeed = 2.2
-	bikeSpeed = 3.4
+	walkSpeed = 3.4
 
 	// One cell of web/sprites.png. The sheet is 4 frames wide and 8 rows tall:
 	// rows 0-3 walking (down, left, right, up), rows 4-7 the same on the bike.
@@ -127,7 +126,6 @@ type Game struct {
 	facing    int
 	animTick  int
 	animFrame int
-	onBike    bool
 
 	// Invisible joystick. The anchor is wherever the finger landed rather than
 	// a fixed point on screen, so the stick is always under the thumb.
@@ -197,27 +195,16 @@ func (g *Game) Update() error {
 
 	// All input collapses into one number, so the movement below never learns
 	// which device produced it. While the story panel is open it stays zero and
-	// the bike simply stops.
+	// the avatar simply stops.
 	var dx float64
 	if g.activeSpot == -1 {
 		dx = g.input()
 	}
 
-	// B swaps the avatar. Nothing else about the mechanics changes - same
-	// collision box, same controls, only the sprite and a little more speed.
-	if inpututil.IsKeyJustPressed(ebiten.KeyB) && g.activeSpot == -1 {
-		g.onBike = !g.onBike
-	}
-
-	speed := walkSpeed
-	if g.onBike {
-		speed = bikeSpeed
-	}
-
 	// One axis, so there is nothing to test separately and nothing to slide
 	// along: the street has no walls. Clamped to the ends of the street, which
 	// is the only limit left now that the tile map is gone.
-	g.bikeX = min(max(g.bikeX+dx*speed, 0), worldWidth)
+	g.bikeX = min(max(g.bikeX+dx*walkSpeed, 0), worldWidth)
 
 	// Y is no longer an input, it is a result. The avatar is on the ground
 	// every frame because there is no jump to lift it off.
@@ -409,9 +396,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	if g.sprites != nil {
 		row := g.facing
-		if g.onBike {
-			row += 4
-		}
 
 		// SubImage does not copy pixels, it returns a view into the same sheet.
 		src := g.sprites.SubImage(image.Rect(
@@ -479,7 +463,6 @@ func main() {
 		bikeX:      startX,
 		bikeY:      groundAt(startX),
 		activeSpot: -1,
-		onBike:     true, // the concept is riding a bike through the CV
 		spotsCh:    make(chan fetchSonuc, 1),
 		spritesCh:  make(chan imageSonuc, 1),
 		layers: []layer{
