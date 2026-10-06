@@ -49,10 +49,11 @@ const (
 	// buildings. Kept a whole number: pixel art scaled by 2 stays crisp,
 	// scaled by 1.6 it does not.
 	//
-	// zoom enlarges everything, which is the same as showing less world:
-	// at 1.25 the visible width and height are each 80% of before.
-	spriteScale = 2.0
-	zoom        = 1.25
+	// viewHeight is how tall the screen is in world pixels, on every device.
+	// Ebiten stretches that to the real window, so a size written here is a
+	// fraction of the screen: 100 is a quarter of it, everywhere.
+	spriteScale = 4.0
+	viewHeight  = 400
 
 	// How far the thumb must travel from where it landed before the invisible
 	// joystick reports a direction. Without it, a resting finger twitches the
@@ -428,18 +429,20 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	)
 }
 
-// Layout reports the resolution the game renders at. Returning the real canvas
-// size instead of a fixed one means 1:1 pixels - nothing is upscaled, and a
-// bigger window shows more of the world rather than the same view stretched.
-//
-// This is also the zoom knob: returning half of each would render half as many
-// logical pixels and draw each one twice as large.
+// Layout reports the resolution the game renders at. Ebiten then stretches
+// that to the real canvas, so returning a fixed height is what makes every
+// screen show the same proportions.
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
-	// Rendering fewer logical pixels than the canvas has means Ebiten scales
-	// the result up, so everything is drawn zoom times larger and zoom times
-	// less world fits on screen.
-	g.viewW = int(float64(outsideWidth) / zoom)
-	g.viewH = int(float64(outsideHeight) / zoom)
+	// A window with no height yet would make the division below crash, so
+	// keep the last size until the browser reports a real one.
+	if outsideHeight == 0 {
+		return g.viewW, g.viewH
+	}
+
+	// The height is fixed and the width follows the window's shape: a wider
+	// window shows more street, never a different slice of sky.
+	g.viewH = viewHeight
+	g.viewW = outsideWidth * viewHeight / outsideHeight
 
 	return g.viewW, g.viewH
 }
@@ -473,9 +476,9 @@ func main() {
 				clr:    color.RGBA{0x5a, 0x5f, 0x86, 0xff},
 				bars: skyline.Generate(1, skyline.Config{
 					Length: worldWidth,
-					MinW:   120, MaxW: 200,
-					MinH: 240, MaxH: 320,
-					MinGap: 10, MaxGap: 20,
+					MinW:   40, MaxW: 90,
+					MinH: 180, MaxH: 260,
+					MinGap: 5, MaxGap: 12,
 				}),
 			},
 			{
@@ -483,9 +486,9 @@ func main() {
 				clr:    color.RGBA{0x22, 0x2e, 0x44, 0xff},
 				bars: skyline.Generate(2, skyline.Config{
 					Length: worldWidth,
-					MinW:   90, MaxW: 240,
-					MinH: 120, MaxH: 220,
-					MinGap: 60, MaxGap: 100,
+					MinW:   50, MaxW: 110,
+					MinH: 120, MaxH: 200,
+					MinGap: 10, MaxGap: 40,
 				}),
 			},
 			{
@@ -495,9 +498,9 @@ func main() {
 				clr:    color.RGBA{0x0d, 0x10, 0x20, 0xff},
 				bars: skyline.Generate(3, skyline.Config{
 					Length: worldWidth,
-					MinW:   80, MaxW: 170,
-					MinH: 60, MaxH: 140,
-					MinGap: 60, MaxGap: 140,
+					MinW:   50, MaxW: 100,
+					MinH: 90, MaxH: 160,
+					MinGap: 20, MaxGap: 60,
 				}),
 			},
 		},
