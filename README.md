@@ -1,60 +1,16 @@
-# Story_time v1
+# Story_time v2
 
-A CV you ride through.
+A CV you walk through.
 
-Instead of a page you scroll, this is a small top-down world you move around in.
-Ride up to a spot, press a key, and that part of my background opens in a panel.
-The same content is also served as a plain HTML page at `/cv`, so recruiters,
-crawlers and phones on a bad connection get the boring version instantly.
+Someone is lost on a long night street. A frog finds them and starts asking
+questions — and the answers lead, piece by piece, through my background. The
+person being searched for turns out to be closer than expected.
 
-Built with Go and PostgreSQL, deliberately without a frontend framework.
-
-The CV page is served in both languages: `/cv` (English) and `/cv/tr` (Turkish).
+Anyone who would rather skip the story can take the exit at any moment: the
+CV sits one tap away in the corner, the whole way.
 
 <!-- TODO: live URL here once deployed -->
-<!-- TODO: screenshot of the world here -->
-
-## The idea
-
-One content store, two renderers.
-
-```
-                    ┌──────────────┐
-                    │  PostgreSQL  │   one row per spot,
-                    │    spots     │   both languages on the row
-                    └──────┬───────┘
-                           │
-                  ┌────────┴────────┐
-                  │   Go HTTP srv   │
-                  └────┬───────┬────┘
-                       │       │
-          /api/spots   │       │   /cv  and  /cv/tr
-             (JSON)    │       │   (server-rendered HTML)
-                       ▼       ▼
-              ┌────────────┐  ┌──────────────┐
-              │ WASM game  │  │ plain page   │
-              │  (canvas)  │  │ no JS at all │
-              └────────────┘  └──────────────┘
-```
-
-A canvas is invisible to search engines, to ATS parsers, and to anyone who
-closes a page that takes too long to load. So the game is not allowed to be the
-only way in. Both views read the same rows, which is what makes the database
-earn its place instead of being decoration: editing a row changes the game and
-the CV page at once, with no rebuild.
-
-## Stack
-
-| | |
-|---|---|
-| Game | Go + [Ebitengine](https://ebitengine.org/), compiled to WebAssembly |
-| Server | Go standard library (`net/http`, `html/template`) |
-| Database | PostgreSQL, via `database/sql` + [pgx](https://github.com/jackc/pgx) |
-| Frontend | ~30 lines of hand-written JS bridging the canvas and the DOM |
-| Art | [Kenney RPG Urban Pack](https://kenney.nl/assets/rpg-urban-pack) (CC0) |
-
-Go 1.26. The only direct dependency is Ebitengine; pgx comes in behind
-`database/sql` so the API knowledge transfers to any other database.
+<!-- TODO: screenshot here -->
 
 ## Running it locally
 
@@ -85,26 +41,20 @@ committed, so **a fresh clone has to run `build.sh` before the page will work.**
 
 | | |
 |---|---|
-| Move | `W A S D` or arrow keys · drag anywhere on touch |
+| Walk | `A D` or `← →` · drag anywhere on touch |
 | Open a story | `Space` while standing on a spot |
-| Get off the bike | `B` |
 
 ## Layout
 
 ```
-cmd/game/      the game: input, collision, camera, drawing, the JS bridge
-cmd/server/    static files, /api/spots, /cv, /cv/tr
-internal/spot/ the Spot type both sides share
-sql/           schema and seed — the content itself
-templates/     the /cv page (kept out of web/, or it would be downloadable raw)
-web/           page, map, art — everything served to the browser
-art/           Kenney source sheet + the script that cuts the avatar out of it
+cmd/game/         the game: input, camera, parallax layers, drawing, the JS bridge
+cmd/server/       static files, /api/spots, /cv, /cv/tr
+internal/spot/    the Spot type both sides share
+internal/skyline/ seeded skyline generator — same seed, same city, in the game and on /cv
+sql/              schema and seed — the content itself
+templates/        the /cv page (kept out of web/, or it would be downloadable raw)
+web/              everything served to the browser
 ```
-
-## Credits
-
-Art from [Kenney](https://kenney.nl) (CC0). Licence text in
-`art/kenney_LICENSE.txt`.
 
 ## Licence
 
