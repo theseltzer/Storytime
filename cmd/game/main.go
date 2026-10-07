@@ -69,6 +69,9 @@ const (
 	groundY = 400
 	horizon = 0.75
 
+	// skyBand is how many pixels tall each stripe of the sky gradient is.
+	skyBand = 2
+
 	// The street runs from 0 to worldWidth. A placeholder: the real length will
 	// come out of the spot positions once they are re-authored for a world that
 	// only has an X axis.
@@ -89,10 +92,11 @@ var (
 	colorSpot     = color.RGBA{0x2d, 0x54, 0x29, 0xff} // Dark green when away
 	colorSpotNear = color.RGBA{0xf1, 0xc4, 0x0f, 0xff} // bright yellow when close
 
-	// Two flat bands until the parallax layers land. Dusk blue and near-black
-	// asphalt, picked so the silhouette look of the next step already reads.
-	colorSky    = color.RGBA{0x2b, 0x3a, 0x55, 0xff}
-	colorGround = color.RGBA{0x1a, 0x1c, 0x22, 0xff}
+	// The sky fades from colorSkyTop at the top of the screen to colorSkyHorizon
+	// at the road line.
+	colorSkyTop     = color.RGBA{0x0d, 0x12, 0x2b, 0xff}
+	colorSkyHorizon = color.RGBA{0xc2, 0x76, 0x5e, 0xff}
+	colorGround     = color.RGBA{0x1a, 0x1c, 0x22, 0xff}
 )
 
 // layer is one depth band of the skyline. factor is how fast it scrolls
@@ -263,6 +267,22 @@ func groundAt(x float64) float64 {
 	return groundY
 }
 
+// lerpByte returns the value t of the way from a to b: a at t=0, b at t=1.
+// The subtraction happens in float64 because b-a in uint8 would wrap around
+// instead of going negative whenever b is smaller than a.
+func lerpByte(a, b uint8, t float64) uint8 {
+	fa, fb := float64(a), float64(b)
+	return uint8(fa + (fb-fa)*t)
+}
+
+func lerpColor(a, b color.RGBA, t float64) color.RGBA {
+	return color.RGBA{
+		lerpByte(a.R, b.R, t),
+		lerpByte(a.G, b.G, t),
+		lerpByte(a.B, b.B, t),
+		0xff}
+}
+
 // camera returns the world coordinate drawn at the top-left of the screen.
 //
 // X behaves as before: the avatar is centred, then clamped so the view never
@@ -354,8 +374,6 @@ func (g *Game) joystick() (float64, float64) {
 
 // Draw paints the current state. It must not change anything.
 func (g *Game) Draw(screen *ebiten.Image) {
-	screen.Fill(colorSky)
-
 	// Everything below is drawn at world coordinate minus camera, which is what
 	// turns a 3200px street into a window onto part of it.
 	camX, camY := g.camera()
@@ -366,6 +384,13 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	// features to slide - drawing it in world coordinates would cost a
 	// translation nobody could see.
 	roadTop := float32(groundY + bikeSize/2 - camY)
+
+	// The sky: horizontal stripes from the top of the screen down to the road,
+	// each one a little closer to the horizon colour.
+	for y := float32(0); y < roadTop; y += skyBand {
+		t := float64(y / roadTop)
+		vector.FillRect(screen, 0, y, float32(viewW), skyBand, lerpColor(colorSkyTop, colorSkyHorizon, t), false)
+	}
 
 	for _, l := range g.layers {
 		for _, b := range l.bars {
