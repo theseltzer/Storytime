@@ -495,15 +495,15 @@ func main() {
 		spritesCh:  make(chan imageSonuc, 1),
 		layers: []layer{
 			{
-				// Far: tallest and densest, so it peeks above the middle row like
-				// a distant city.
+				// Far: tallest but sparse and close to the sky colour, so it
+				// peeks above the middle row like a distant city in haze.
 				factor: 0.15,
 				clr:    lerpColor(colorSkyHorizon, colorSkyTop, 0.4),
 				bars: skyline.Generate(1, skyline.Config{
 					Length: worldWidth,
 					MinW:   40, MaxW: 90,
-					MinH: 180, MaxH: 260,
-					MinGap: 5, MaxGap: 12,
+					MinH: 100, MaxH: 170,
+					MinGap: 30, MaxGap: 120,
 				}),
 			},
 			{
@@ -512,8 +512,8 @@ func main() {
 				bars: skyline.Generate(2, skyline.Config{
 					Length: worldWidth,
 					MinW:   50, MaxW: 110,
-					MinH: 120, MaxH: 200,
-					MinGap: 10, MaxGap: 40,
+					MinH: 70, MaxH: 140,
+					MinGap: 50, MaxGap: 160,
 				}),
 			},
 			{
@@ -524,8 +524,8 @@ func main() {
 				bars: skyline.Generate(3, skyline.Config{
 					Length: worldWidth,
 					MinW:   50, MaxW: 100,
-					MinH: 90, MaxH: 160,
-					MinGap: 20, MaxGap: 60,
+					MinH: 50, MaxH: 110,
+					MinGap: 80, MaxGap: 220,
 				}),
 			},
 		},
