@@ -17,6 +17,7 @@ import (
 	"syscall/js"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 	"github.com/theseltzer/storytime/internal/skyline"
@@ -72,10 +73,11 @@ const (
 	// skyBand is how many pixels tall each stripe of the sky gradient is.
 	skyBand = 2
 
-	// The street runs from 0 to worldWidth. A placeholder: the real length will
-	// come out of the spot positions once they are re-authored for a world that
-	// only has an X axis.
-	worldWidth = 3200
+	// The world runs from 0 to worldWidth, but the avatar can only walk to
+	// walkEnd: past it are the bridge and open water, seen but not walked on.
+	// Walking to walkEnd takes about 21 seconds at walkSpeed.
+	worldWidth = 4600
+	walkEnd    = 4300
 	startX     = 120
 )
 
@@ -105,6 +107,22 @@ type layer struct {
 	factor float64
 	clr    color.RGBA
 	bars   []skyline.Bar
+}
+
+// zone is one stretch of the street with its own character. start and end
+// are street X positions; kind says what happens there.
+type zone struct {
+	start, end float64
+	kind       string
+}
+
+// zones lays the story out along the street, left to right.
+var zones = []zone{
+	{start: 0, end: 500, kind: "clearing"},
+	{start: 500, end: 1200, kind: "city"},
+	{start: 1200, end: 1800, kind: "machine"},
+	{start: 1800, end: walkEnd, kind: "timeline"},
+	{start: walkEnd, end: worldWidth, kind: "bridge"},
 }
 
 // Game holds everything that changes over time. Ebiten calls Update and Draw
@@ -209,7 +227,7 @@ func (g *Game) Update() error {
 	// One axis, so there is nothing to test separately and nothing to slide
 	// along: the street has no walls. Clamped to the ends of the street, which
 	// is the only limit left now that the tile map is gone.
-	g.bikeX = min(max(g.bikeX+dx*walkSpeed, 0), worldWidth)
+	g.bikeX = min(max(g.bikeX+dx*walkSpeed, 0), walkEnd)
 
 	// Y is no longer an input, it is a result. The avatar is on the ground
 	// every frame because there is no jump to lift it off.
@@ -401,6 +419,18 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 
 	vector.DrawFilledRect(screen, 0, roadTop, float32(viewW), float32(viewH), colorGround, false)
+	// Debug: one thin strip per zone along the top of the road, alternating
+	// colours, with the zone's name above it. Temporary, while the zone
+	// boundaries are being tuned.
+	for i, z := range zones {
+		clr := color.RGBA{0x4a, 0x90, 0xd9, 0xff}
+		if i%2 == 1 {
+			clr = color.RGBA{0xd9, 0x4a, 0x90, 0xff}
+		}
+		x := z.start - camX
+		vector.FillRect(screen, float32(x), roadTop, float32(z.end-z.start), 6, clr, false)
+		ebitenutil.DebugPrintAt(screen, z.kind, int(x)+4, int(roadTop)+8)
+	}
 
 	// Placeholder markers until the buildings arrive. They are pinned to the
 	// ground line, not to their stored Y: those Y values were authored for a
