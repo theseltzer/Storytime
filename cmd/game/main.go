@@ -498,7 +498,7 @@ func main() {
 				// Far: tallest and densest, so it peeks above the middle row like
 				// a distant city.
 				factor: 0.15,
-				clr:    color.RGBA{0x5a, 0x5f, 0x86, 0xff},
+				clr:    lerpColor(colorSkyHorizon, colorSkyTop, 0.4),
 				bars: skyline.Generate(1, skyline.Config{
 					Length: worldWidth,
 					MinW:   40, MaxW: 90,
@@ -508,7 +508,7 @@ func main() {
 			},
 			{
 				factor: 0.35,
-				clr:    color.RGBA{0x22, 0x2e, 0x44, 0xff},
+				clr:    lerpColor(colorSkyHorizon, colorSkyTop, 0.6),
 				bars: skyline.Generate(2, skyline.Config{
 					Length: worldWidth,
 					MinW:   50, MaxW: 110,
@@ -520,7 +520,7 @@ func main() {
 				// Near: short and spaced out, so the rows behind show through
 				// the gaps.
 				factor: 0.60,
-				clr:    color.RGBA{0x0d, 0x10, 0x20, 0xff},
+				clr:    lerpColor(colorSkyHorizon, colorSkyTop, 0.85),
 				bars: skyline.Generate(3, skyline.Config{
 					Length: worldWidth,
 					MinW:   50, MaxW: 100,
