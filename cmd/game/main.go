@@ -125,6 +125,16 @@ var zones = []zone{
 	{start: walkEnd, end: worldWidth, kind: "bridge"},
 }
 
+// zoneAt returns the kind of the zone that street position x falls in, or "" if none does.
+func zoneAt(x float64) string {
+	for _, z := range zones {
+		if x >= z.start && x < z.end {
+			return z.kind
+		}
+	}
+	return ""
+}
+
 // Game holds everything that changes over time. Ebiten calls Update and Draw
 // on this one value forever, so all game state lives here.
 type Game struct {
@@ -431,6 +441,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		vector.FillRect(screen, float32(x), roadTop, float32(z.end-z.start), 6, clr, false)
 		ebitenutil.DebugPrintAt(screen, z.kind, int(x)+4, int(roadTop)+8)
 	}
+	ebitenutil.DebugPrintAt(screen, "zone: "+zoneAt(g.bikeX), 4, 4)
 
 	// Placeholder markers until the buildings arrive. They are pinned to the
 	// ground line, not to their stored Y: those Y values were authored for a
