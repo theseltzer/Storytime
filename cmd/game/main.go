@@ -103,10 +103,12 @@ var (
 
 // layer is one depth band of the skyline. factor is how fast it scrolls
 // relative to the camera: 1 is street level, smaller is farther away.
+// zoned layers skip bars that fall over a clearing.
 type layer struct {
 	factor float64
 	clr    color.RGBA
 	bars   []skyline.Bar
+	zoned  bool
 }
 
 // zone is one stretch of the street with its own character. start and end
@@ -423,6 +425,12 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	for _, l := range g.layers {
 		for _, b := range l.bars {
 			screenX := b.X - camX*l.factor
+			if l.zoned {
+				streetX := (b.X-viewW/2)/l.factor + viewW/2
+				if zoneAt(max(streetX, 0)) == "clearing" {
+					continue
+				}
+			}
 			topY := float32(roadTop) - float32(b.H)
 			vector.FillRect(screen, float32(screenX), float32(topY), float32(b.W), float32(b.H), l.clr, false)
 		}
@@ -561,6 +569,7 @@ func main() {
 				// Near: short and spaced out, so the rows behind show through
 				// the gaps.
 				factor: 0.60,
+				zoned:  true,
 				clr:    lerpColor(colorSkyHorizon, colorSkyTop, 0.85),
 				bars: skyline.Generate(3, skyline.Config{
 					Length: worldWidth,
