@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"strconv"
 
 	// Blank import: image.Decode only knows the formats whose decoders have
 	// registered themselves. Without this a perfectly good PNG fails with
@@ -161,6 +162,7 @@ type Game struct {
 	facing    int
 	animTick  int
 	animFrame int
+	stage     int
 
 	// Invisible joystick. The anchor is wherever the finger landed rather than
 	// a fixed point on screen, so the stick is always under the thumb.
@@ -267,7 +269,9 @@ func (g *Game) Update() error {
 	for i := range g.spots {
 		g.spots[i].IsNear = math.Abs(g.bikeX-g.spots[i].X) <= g.spots[i].Radius
 	}
-
+	if inpututil.IsKeyJustPressed(ebiten.KeyM) {
+		g.stage++
+	}
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) && g.activeSpot == -1 {
 		for i := range g.spots {
 			if g.spots[i].IsNear {
@@ -450,7 +454,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		ebitenutil.DebugPrintAt(screen, z.kind, int(x)+4, int(roadTop)+8)
 	}
 	ebitenutil.DebugPrintAt(screen, "zone: "+zoneAt(g.bikeX), 4, 4)
-
+	ebitenutil.DebugPrintAt(screen, "stage: "+strconv.Itoa(g.stage), 4, 20)
 	// Placeholder markers until the buildings arrive. They are pinned to the
 	// ground line, not to their stored Y: those Y values were authored for a
 	// top-down world and mean nothing on a street.
