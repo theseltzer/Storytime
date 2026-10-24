@@ -81,12 +81,10 @@ const (
 	walkEnd    = 4300
 	startX     = 120
 
-	// The machine stands in the middle of its zone and grows one stage at a
-	// time, machineStageH pixels per stage, up to maxStage.
-	machineX      = 1500
-	machineW      = 120
-	machineStageH = 60
-	maxStage      = 3
+	// The machine stands in the middle of its zone. It is raised over
+	// maxStage stages; the last one adds no parts, it lights the machine up.
+	machineX = 1500
+	maxStage = 3
 )
 
 // Facing directions, in the row order of the sprite sheet.
@@ -108,6 +106,7 @@ var (
 	colorSkyHorizon = color.RGBA{0xc2, 0x76, 0x5e, 0xff}
 	colorGround     = color.RGBA{0x1a, 0x1c, 0x22, 0xff}
 	colorMachine    = color.RGBA{0x3a, 0x3f, 0x4f, 0xff}
+	colorMachineLit = color.RGBA{0x5f, 0xd3, 0xc4, 0xff}
 )
 
 // layer is one depth band of the skyline. factor is how fast it scrolls
@@ -144,6 +143,22 @@ func zoneAt(x float64) string {
 		}
 	}
 	return ""
+}
+
+// machinePart is one rectangle of the machine. x is the left edge measured
+// from machineX, y is how far its bottom sits above the road. It appears once
+// the machine reaches stage.
+type machinePart struct {
+	x, y, w, h float32
+	stage      int
+}
+
+// machineParts is the machine's look. Change the shape here, not in Draw.
+var machineParts = []machinePart{
+	{x: -70, y: 0, w: 140, h: 24, stage: 1},  // base
+	{x: -50, y: 24, w: 100, h: 80, stage: 1}, // body
+	{x: -40, y: 104, w: 80, h: 50, stage: 2}, // top cabinet
+	{x: -3, y: 154, w: 6, h: 30, stage: 2},   // antenna
 }
 
 // Game holds everything that changes over time. Ebiten calls Update and Draw
@@ -463,10 +478,19 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 	ebitenutil.DebugPrintAt(screen, "zone: "+zoneAt(g.bikeX), 4, 4)
 	ebitenutil.DebugPrintAt(screen, "stage: "+strconv.Itoa(g.stage), 4, 20)
-	// The machine: stage 0 has no height, so nothing shows until the first
-	// stage. Drawn before the avatar, so the avatar walks in front of it.
-	machineH := float32(g.stage) * machineStageH
-	vector.FillRect(screen, float32(machineX-machineW/2-camX), roadTop-machineH, machineW, machineH, colorMachine, false)
+	// The machine: each part shows once its stage is reached, so stage 0 draws
+	// nothing. Drawn before the avatar, so the avatar walks in front of it.
+	machineClr := colorMachine
+	if g.stage == maxStage {
+		machineClr = colorMachineLit
+	}
+	baseX := float32(machineX - camX)
+	for _, p := range machineParts {
+		if g.stage < p.stage {
+			continue
+		}
+		vector.FillRect(screen, baseX+p.x, roadTop-p.y-p.h, p.w, p.h, machineClr, false)
+	}
 	// Placeholder markers until the buildings arrive. They are pinned to the
 	// ground line, not to their stored Y: those Y values were authored for a
 	// top-down world and mean nothing on a street.
