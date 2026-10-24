@@ -80,6 +80,13 @@ const (
 	worldWidth = 4600
 	walkEnd    = 4300
 	startX     = 120
+
+	// The machine stands in the middle of its zone and grows one stage at a
+	// time, machineStageH pixels per stage, up to maxStage.
+	machineX      = 1500
+	machineW      = 120
+	machineStageH = 60
+	maxStage      = 3
 )
 
 // Facing directions, in the row order of the sprite sheet.
@@ -100,6 +107,7 @@ var (
 	colorSkyTop     = color.RGBA{0x0d, 0x12, 0x2b, 0xff}
 	colorSkyHorizon = color.RGBA{0xc2, 0x76, 0x5e, 0xff}
 	colorGround     = color.RGBA{0x1a, 0x1c, 0x22, 0xff}
+	colorMachine    = color.RGBA{0x3a, 0x3f, 0x4f, 0xff}
 )
 
 // layer is one depth band of the skyline. factor is how fast it scrolls
@@ -269,7 +277,7 @@ func (g *Game) Update() error {
 	for i := range g.spots {
 		g.spots[i].IsNear = math.Abs(g.bikeX-g.spots[i].X) <= g.spots[i].Radius
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyM) {
+	if inpututil.IsKeyJustPressed(ebiten.KeyM) && g.stage < maxStage {
 		g.stage++
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) && g.activeSpot == -1 {
@@ -455,6 +463,10 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 	ebitenutil.DebugPrintAt(screen, "zone: "+zoneAt(g.bikeX), 4, 4)
 	ebitenutil.DebugPrintAt(screen, "stage: "+strconv.Itoa(g.stage), 4, 20)
+	// The machine: stage 0 has no height, so nothing shows until the first
+	// stage. Drawn before the avatar, so the avatar walks in front of it.
+	machineH := float32(g.stage) * machineStageH
+	vector.FillRect(screen, float32(machineX-machineW/2-camX), roadTop-machineH, machineW, machineH, colorMachine, false)
 	// Placeholder markers until the buildings arrive. They are pinned to the
 	// ground line, not to their stored Y: those Y values were authored for a
 	// top-down world and mean nothing on a street.
