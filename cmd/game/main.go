@@ -82,9 +82,11 @@ const (
 	startX     = 120
 
 	// The machine stands in the middle of its zone. It is raised over
+	// When the proximity of 200 to the machine is abused it will trigger the conversation
 	// maxStage stages; the last one adds no parts, it lights the machine up.
-	machineX = 1500
-	maxStage = 3
+	machineX      = 1500
+	machineRadius = 200
+	maxStage      = 3
 )
 
 // Facing directions, in the row order of the sprite sheet.
@@ -184,8 +186,10 @@ type Game struct {
 
 	// Set once the spots have landed, so the DOM loading indicator is taken
 	// down exactly once rather than sixty times a second.
-	loaded bool
-	failed bool
+	// proximity check
+	loaded      bool
+	failed      bool
+	nearMachine bool
 
 	// The size of the window the world is being watched through, in world
 	// pixels. Set by Layout every frame; the world itself is far larger.
@@ -305,6 +309,9 @@ func (g *Game) Update() error {
 	for i := range g.spots {
 		g.spots[i].IsNear = math.Abs(g.bikeX-g.spots[i].X) <= g.spots[i].Radius
 	}
+
+	g.nearMachine = math.Abs(g.bikeX-machineX) <= machineRadius
+
 	if inpututil.IsKeyJustPressed(ebiten.KeyM) && g.stage < maxStage {
 		g.stage++
 	}
@@ -492,7 +499,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	ebitenutil.DebugPrintAt(screen, "zone: "+zoneAt(g.bikeX), 4, 4)
 	ebitenutil.DebugPrintAt(screen, "stage: "+strconv.Itoa(g.stage), 4, 20)
 
-	if g.stage < len(questions) {
+	if g.stage < len(questions) && g.nearMachine {
 		ebitenutil.DebugPrintAt(screen, questions[g.stage].textEN, 4, 36)
 	}
 	// The machine: each part shows once its stage is reached, so stage 0 draws
