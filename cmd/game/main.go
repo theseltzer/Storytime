@@ -338,6 +338,22 @@ func (g *Game) Update() error {
 		g.shownQuestion = want
 	}
 
+	// While a question is on screen, pin the bubble to the top-right of the
+	// avatar's head. Go sends fractions of the view (0..1), not pixels: Go
+	// only knows world pixels, the page only knows CSS pixels, and a fraction
+	// means the same thing to both.
+	if g.shownQuestion != -1 {
+		camX, camY := g.camera()
+		viewW, viewH := g.view()
+
+		// Same anchor maths as the avatar's Translate in Draw: +half the
+		// sprite width gives its right edge, the y is its top edge.
+		x := g.bikeX - camX + spriteSize*spriteScale/2
+		y := g.bikeY - camY + bikeSize/2 - spriteFoot*spriteScale
+
+		js.Global().Call("placeQuestion", x/viewW, y/viewH)
+	}
+
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) && g.activeSpot == -1 {
 		for i := range g.spots {
 			if g.spots[i].IsNear {
