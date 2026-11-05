@@ -84,9 +84,11 @@ const (
 	// The machine stands in the middle of its zone. It is raised over
 	// When the proximity of 200 to the machine is abused it will trigger the conversation
 	// maxStage stages; the last one adds no parts, it lights the machine up.
-	machineX      = 1500
+	machineX = 1500
+	maxStage = 3
+
+	// The question is asked once the avatar is within this distance of machineX.
 	machineRadius = 200
-	maxStage      = 3
 )
 
 // Facing directions, in the row order of the sprite sheet.
@@ -186,10 +188,8 @@ type Game struct {
 
 	// Set once the spots have landed, so the DOM loading indicator is taken
 	// down exactly once rather than sixty times a second.
-	// proximity check
-	loaded      bool
-	failed      bool
-	nearMachine bool
+	loaded bool
+	failed bool
 
 	// The size of the window the world is being watched through, in world
 	// pixels. Set by Layout every frame; the world itself is far larger.
@@ -203,6 +203,11 @@ type Game struct {
 	animTick  int
 	animFrame int
 	stage     int
+
+	// True while the avatar is within machineRadius of the machine.
+	nearMachine bool
+	// Index of the question on screen, -1 when none. JS is told only when it changes.
+	shownQuestion int
 
 	// Invisible joystick. The anchor is wherever the finger landed rather than
 	// a fixed point on screen, so the stick is always under the thumb.
@@ -315,6 +320,24 @@ func (g *Game) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyM) && g.stage < maxStage {
 		g.stage++
 	}
+
+	// Work out which question should be on screen, then tell JS only if that
+	// differs from what is there. Walking away (n → -1) and pressing M (0 → 1)
+	// are both just "it changed", so one check covers both.
+	want := -1
+	if g.nearMachine && g.stage < len(questions) {
+		want = g.stage
+	}
+	if want != g.shownQuestion {
+		if want == -1 {
+			js.Global().Call("hideQuestion")
+		} else {
+			q := questions[want]
+			js.Global().Call("showQuestion", q.textEN, q.textTR, q.answerEN, q.answerTR)
+		}
+		g.shownQuestion = want
+	}
+
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) && g.activeSpot == -1 {
 		for i := range g.spots {
 			if g.spots[i].IsNear {
@@ -499,9 +522,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	ebitenutil.DebugPrintAt(screen, "zone: "+zoneAt(g.bikeX), 4, 4)
 	ebitenutil.DebugPrintAt(screen, "stage: "+strconv.Itoa(g.stage), 4, 20)
 
-	if g.stage < len(questions) && g.nearMachine {
-		ebitenutil.DebugPrintAt(screen, questions[g.stage].textEN, 4, 36)
-	}
 	// The machine: each part shows once its stage is reached, so stage 0 draws
 	// nothing. Drawn before the avatar, so the avatar walks in front of it.
 	machineClr := colorMachine
@@ -601,11 +621,12 @@ func main() {
 		// The start position is a constant now. It used to be the map's S tile,
 		// but there is no map to read it out of - and on a street there is only
 		// one interesting question about where to begin: how far along.
-		bikeX:      startX,
-		bikeY:      groundAt(startX),
-		activeSpot: -1,
-		spotsCh:    make(chan fetchSonuc, 1),
-		spritesCh:  make(chan imageSonuc, 1),
+		bikeX:         startX,
+		bikeY:         groundAt(startX),
+		activeSpot:    -1,
+		shownQuestion: -1,
+		spotsCh:       make(chan fetchSonuc, 1),
+		spritesCh:     make(chan imageSonuc, 1),
 		layers: []layer{
 			{
 				// Far: tallest but sparse and close to the sky colour, so it
