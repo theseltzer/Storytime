@@ -161,6 +161,19 @@ var machineParts = []machinePart{
 	{x: -3, y: 154, w: 6, h: 30, stage: 2},   // antenna
 }
 
+type question struct {
+	textEN   string
+	textTR   string
+	answerEN string
+	answerTR string
+}
+
+var questions = []question{
+	{textEN: "soru 1", textTR: "soru 1", answerEN: "cevap1", answerTR: "cevap1"},
+	{textEN: "soru 2", textTR: "soru 2", answerEN: "cevap2", answerTR: "cevap2"},
+	{textEN: "soru 3", textTR: "soru 3", answerEN: "cevap3", answerTR: "cevap3"},
+}
+
 // Game holds everything that changes over time. Ebiten calls Update and Draw
 // on this one value forever, so all game state lives here.
 type Game struct {
@@ -478,6 +491,10 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 	ebitenutil.DebugPrintAt(screen, "zone: "+zoneAt(g.bikeX), 4, 4)
 	ebitenutil.DebugPrintAt(screen, "stage: "+strconv.Itoa(g.stage), 4, 20)
+
+	if g.stage < len(questions) {
+		ebitenutil.DebugPrintAt(screen, questions[g.stage].textEN, 4, 36)
+	}
 	// The machine: each part shows once its stage is reached, so stage 0 draws
 	// nothing. Drawn before the avatar, so the avatar walks in front of it.
 	machineClr := colorMachine
