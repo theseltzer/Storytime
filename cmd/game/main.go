@@ -694,6 +694,16 @@ func main() {
 		return nil
 	}))
 
+	// The answer button calls this. One answer raises the machine one stage;
+	// Update sees the new stage on the next frame and swaps the question by
+	// itself. The guard stops a fast double-click from going past maxStage.
+	js.Global().Set("answerQuestion", js.FuncOf(func(this js.Value, args []js.Value) any {
+		if g.stage < maxStage {
+			g.stage++
+		}
+		return nil
+	}))
+
 	ebiten.SetWindowSize(screenWidth, screenHeight)
 	ebiten.SetWindowTitle("Story_time")
 

@@ -335,6 +335,13 @@
       closeStory();
     });
 
+    // Cevap butonu: Go'ya "cevaplandı" der. Balonu burada gizlemiyoruz;
+    // stage artınca Go bir sonraki karede yeni soruyu ya da hideQuestion'ı
+    // kendisi gönderiyor. Balonun ne göstereceğine tek bir taraf karar versin.
+    document.getElementById("question-answer").addEventListener("click", () => {
+      answerQuestion();
+    });
+
     const go = new Go();
 
     // instantiateStreaming compiles the module while it downloads, so we don't
