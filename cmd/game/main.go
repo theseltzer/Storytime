@@ -81,6 +81,10 @@ const (
 	walkEnd    = 4300
 	startX     = 120
 
+	// timelineStart: where the timeline zone begins. Until the machine is
+	// fully built, the avatar cannot walk past it.
+	timelineStart = 1800
+
 	// The machine stands in the middle of its zone. It is raised over
 	// When the proximity of 200 to the machine is abused it will trigger the conversation
 	// maxStage stages; the last one adds no parts, it lights the machine up.
@@ -134,8 +138,8 @@ type zone struct {
 var zones = []zone{
 	{start: 0, end: 500, kind: "clearing"},
 	{start: 500, end: 1200, kind: "city"},
-	{start: 1200, end: 1800, kind: "machine"},
-	{start: 1800, end: walkEnd, kind: "timeline"},
+	{start: 1200, end: timelineStart, kind: "machine"},
+	{start: timelineStart, end: walkEnd, kind: "timeline"},
 	{start: walkEnd, end: worldWidth, kind: "bridge"},
 }
 
@@ -286,8 +290,11 @@ func (g *Game) Update() error {
 	// One axis, so there is nothing to test separately and nothing to slide
 	// along: the street has no walls. Clamped to the ends of the street, which
 	// is the only limit left now that the tile map is gone.
-	g.bikeX = min(max(g.bikeX+dx*walkSpeed, 0), walkEnd)
-
+	rightEdge := float64(walkEnd)
+	if g.stage < maxStage {
+		rightEdge = timelineStart
+	}
+	g.bikeX = min(max(g.bikeX+dx*walkSpeed, 0), rightEdge)
 	// Y is no longer an input, it is a result. The avatar is on the ground
 	// every frame because there is no jump to lift it off.
 	g.bikeY = groundAt(g.bikeX)
