@@ -79,6 +79,44 @@
 
   #story-close:hover { background-color: #2d5429; }
 
+  /* Kurbağanın soru balonu. Sol üst köşeye sabitlenir, asıl konumu
+     placeQuestion her karede transform ile verir. transform sadece
+     compositor'da (GPU) çalışır; left/top ise her karede layout hesaplatır. */
+  #question-bubble {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 70%;
+    max-width: 320px;
+    padding: 14px 16px;
+    background-color: #ffffff;
+    color: #1a1a1a;
+    border-radius: 8px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    z-index: 10;
+    display: none; /* Go showQuestion çağırana kadar gizli */
+    font-family: system-ui, -apple-system, sans-serif;
+  }
+
+  #question-text {
+    margin: 0;
+    font-size: 0.95rem;
+    line-height: 1.5;
+  }
+
+  #question-answer {
+    margin-top: 12px;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    background-color: #3a6b35; /* #story-close ile aynı yeşil */
+    color: #fff;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  #question-answer:hover { background-color: #2d5429; }
+
   /* Dil düğmesi. Panelden yüksek z-index: panel açıkken de erişilebilir
      kalmalı, çünkü asıl işe yaradığı an "bunu okuyamıyorum" anıdır. */
   #lang-toggle {
@@ -116,6 +154,12 @@
     <h2 id="story-title"></h2>
     <p id="story-body"></p>
     <button id="story-close">Kapat</button>
+  </div>
+
+  <!-- Kurbağanın soru balonu. Tek cevap, tek buton: seçim yok, deneyim var. -->
+  <div id="question-bubble">
+    <p id="question-text"></p>
+    <button id="question-answer"></button>
   </div>
 
   <!-- Ships with Go, at $(go env GOROOT)/lib/wasm/wasm_exec.js.
@@ -166,6 +210,7 @@
     // O anda ekranda ne olduğunun hafızası. Dil değişince yeniden çizebilmek
     // için lazım: DOM'daki metin çevrilmiş hâli, kaynağı değil.
     let story = null;      // {titleEN, bodyEN, titleTR, bodyTR}
+    let question = null;   // {textEN, textTR, answerEN, answerTR}
     let statusKey = null;  // UI sözlüğündeki anahtar, ya da null
     let statusIsError = false;
 
@@ -188,6 +233,17 @@
         panel.style.display = "block";
       } else {
         panel.style.display = "none";
+      }
+
+      const bubble = document.getElementById("question-bubble");
+      if (question) {
+        document.getElementById("question-text").textContent =
+          lang === "tr" ? question.textTR : question.textEN;
+        document.getElementById("question-answer").textContent =
+          lang === "tr" ? question.answerTR : question.answerEN;
+        bubble.style.display = "block";
+      } else {
+        bubble.style.display = "none";
       }
 
       const el = document.getElementById("game-status");
@@ -223,6 +279,29 @@
     function hideStory() {
       story = null;
       render();
+    }
+
+    function showQuestion(textEN, textTR, answerEN, answerTR) {
+      question = { textEN, textTR, answerEN, answerTR };
+      render();
+    }
+
+    function hideQuestion() {
+      question = null;
+      render();
+    }
+
+    // fx, fy: karakterin kafasının sağ üstü, ekranın oranı olarak (0..1).
+    // Canvas pencereyi doldurduğu için pencere boyuyla çarpınca CSS pikseli
+    // çıkıyor. translateY(-100%) balonun ALT kenarını o noktaya oturtur:
+    // balon kafanın üstünde durur, yüzü kapatmaz. render()'a girmiyor,
+    // çünkü metin değişmiyor, sadece konum; her karede metni yeniden
+    // yazmak boşa iş olurdu.
+    function placeQuestion(fx, fy) {
+      const x = fx * window.innerWidth;
+      const y = fy * window.innerHeight;
+      document.getElementById("question-bubble").style.transform =
+        `translate(${x}px, ${y}px) translateY(-100%)`;
     }
 
     // Go metin değil ANAHTAR gönderiyor ("loading", "map_failed"). Cümlenin
